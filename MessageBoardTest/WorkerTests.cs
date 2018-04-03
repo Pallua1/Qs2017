@@ -10,6 +10,55 @@ namespace SimulatedActorUnitTests
     [TestClass]
     public class WorkerTests
     {
+        static private TestClient testclient_;
+        static private SimulatedActorSystem system_;
+        static private Dispatcher dispatcher_;
+        static private SimulatedActor worker_;
+
+        [ClassInitialize]
+        static public void setup(TestContext context)
+        {
+            system_ = new SimulatedActorSystem();
+            dispatcher_ = new Dispatcher(system_, 2);
+            system_.Spawn(dispatcher_);
+        }
+
+        [ClassCleanup]
+        static public void cleanup()
+        {
+            dispatcher_.Tell(new Stop());
+
+            int endtime = system_.currentTime + 13;
+            system_.RunUntil(endtime);
+            Assert.AreEqual(system_.currentTime, endtime + 1);
+        }
+
+        [TestInitialize]
+        public void test_setup()
+        {
+            testclient_ = new TestClient();
+            system_.Spawn(testclient_);
+
+            dispatcher_.Tell(new InitCommunication(testclient_, 10));
+            while (testclient_.ReceivedMessages.Count == 0)
+                system_.RunFor(1);
+            Message initAckMessage = testclient_.ReceivedMessages.Dequeue();
+            InitAck initAck = (InitAck)initAckMessage;
+
+            worker_ = initAck.Worker;
+        }
+
+        [TestCleanup]
+        public void test_cleanup()
+        {
+            worker_.Tell(new FinishCommunication(10));
+            while (testclient_.ReceivedMessages.Count == 0)
+                system_.RunFor(1);
+
+            Message finAckMessage = testclient_.ReceivedMessages.Dequeue();
+        }
+
+
 
         /// <summary>
         /// Simple first test initiating a communication and closing it afterwards.
@@ -50,16 +99,6 @@ namespace SimulatedActorUnitTests
             int endtime = system.currentTime + 13;
             system.RunUntil(endtime);
             Assert.AreEqual(system.currentTime, endtime + 1);
-        }
-
-        /// Tests the ID of an yet not started client.
-        [TestMethod]
-        public void TestActorID()
-        {
-            TestClient client = new TestClient();
-            long expected = -1;
-
-            Assert.AreEqual(expected, client.Id);
         }
     }
 }
