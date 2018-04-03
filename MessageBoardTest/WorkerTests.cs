@@ -47,10 +47,20 @@ namespace SimulatedActorUnitTests
             dispatcher.Tell(new Stop());
 
             // TODO run system until workers and dispatcher are stopped
+            int endtime = system.currentTime + 13;
+            system.RunUntil(endtime);
+            Assert.AreEqual(system.currentTime, endtime + 1);
         }
 
-        // Todo: Implement test cases
+        /// Tests the ID of an yet not started client.
+        [TestMethod]
+        public void TestActorID()
+        {
+            TestClient client = new TestClient();
+            long expected = -1;
 
+            Assert.AreEqual(expected, client.Id);
+        }
     }
 }
 
