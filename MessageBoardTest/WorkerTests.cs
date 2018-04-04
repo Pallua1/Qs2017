@@ -11,11 +11,11 @@ namespace SimulatedActorUnitTests
     public class WorkerTests
     {
         static private TestClient testclient_;
-       // static private TestClient testclient2_;
+        // static private TestClient testclient2_;
         static private SimulatedActorSystem system_;
         static private Dispatcher dispatcher_;
         static private SimulatedActor worker_;
-      //  static private SimulatedActor worker2_;
+        //  static private SimulatedActor worker2_;
 
         [ClassInitialize]
         static public void setup(TestContext context)
@@ -40,7 +40,7 @@ namespace SimulatedActorUnitTests
         {
             //Testclient 1
             testclient_ = new TestClient();
-            
+
             system_.Spawn(testclient_);
 
             dispatcher_.Tell(new InitCommunication(testclient_, 10));
@@ -176,7 +176,7 @@ namespace SimulatedActorUnitTests
             //OperationAckMessage tells if Message was published
             Message operationAckMessage = testclient_.ReceivedMessages.Dequeue();
             OperationAck operationAck = (OperationAck)operationAckMessage;
-            
+
             //Holt die Message vom entsprechenden Autor 
             worker_.Tell(new RetrieveMessages(author, comm_id));
             while (testclient_.ReceivedMessages.Count == 0)
@@ -205,7 +205,7 @@ namespace SimulatedActorUnitTests
             worker_.Tell(like_test);
             while (testclient_.ReceivedMessages.Count == 0)
                 system_.RunFor(1);
-            
+
             operationAckMessage = testclient_.ReceivedMessages.Dequeue(); //OperationAckMessage tells if Message was published
             Assert.AreEqual(typeof(OperationAck), operationAckMessage.GetType());
 
@@ -222,8 +222,8 @@ namespace SimulatedActorUnitTests
                 system_.RunFor(1);
 
             //Holt sich die Nachrichtt
-             foundMessagesMessage = testclient_.ReceivedMessages.Dequeue();
-             foundMessages = (FoundMessages)foundMessagesMessage;
+            foundMessagesMessage = testclient_.ReceivedMessages.Dequeue();
+            foundMessages = (FoundMessages)foundMessagesMessage;
             userMessage = foundMessages.Messages.FirstOrDefault();
 
             int num_likes = userMessage.Likes.Count;
@@ -233,26 +233,189 @@ namespace SimulatedActorUnitTests
             Assert.AreEqual(1, num_dislikes);
 
 
-            /*
+
 
             //Add like dislike with wrong id
             Like like_wrongid = new Like(testclient_.ToString(), comm_id, 5);
             Dislike dislike_wrongid = new Dislike(testclient_.ToString(), comm_id, 5);
 
+            //Publish wrong like
             worker_.Tell(like_wrongid);
             while (testclient_.ReceivedMessages.Count == 0)
                 system_.RunFor(1);
             operationAckMessage = testclient_.ReceivedMessages.Dequeue(); //OperationAckMessage tells if Message was published
-            Assert.AreEqual(typeof(OperationAck), operationAckMessage.GetType());
+            Console.WriteLine(operationAckMessage);
+            Assert.AreEqual(typeof(OperationFailed), operationAckMessage.GetType());
 
-            //Publish dislike
+
+            //Publish wrong dislike
             worker_.Tell(dislike_wrongid);
             while (testclient_.ReceivedMessages.Count == 0)
                 system_.RunFor(1);
             operationAckMessage = testclient_.ReceivedMessages.Dequeue(); //OperationAckMessage tells if Message was published
-            Assert.AreEqual(typeof(OperationAck), operationAckMessage.GetType());
-       
-            */
+            Assert.AreEqual(typeof(OperationFailed), operationAckMessage.GetType());
+
+
+
+            //Add like/dislike 2nd time with same client and same message;
+            Like like_wrongclient = new Like(testclient_.ToString(), comm_id, message_id);
+            Dislike dislike_wrongclient = new Dislike(testclient_.ToString(), comm_id, message_id);
+
+            //Publish 2nd like form same client on same message
+            worker_.Tell(like_wrongclient);
+            while (testclient_.ReceivedMessages.Count == 0)
+                system_.RunFor(1);
+            operationAckMessage = testclient_.ReceivedMessages.Dequeue(); //OperationAckMessage tells if Message was published
+            Console.WriteLine(operationAckMessage);
+            Assert.AreEqual(typeof(OperationFailed), operationAckMessage.GetType());
+
+
+            //Publish 2nd dislike form same client on same message
+            worker_.Tell(dislike_wrongclient);
+            while (testclient_.ReceivedMessages.Count == 0)
+                system_.RunFor(1);
+            operationAckMessage = testclient_.ReceivedMessages.Dequeue(); //OperationAckMessage tells if Message was published
+            Assert.AreEqual(typeof(OperationFailed), operationAckMessage.GetType());
+
+
+
         }
+
+
+        [TestMethod]
+        public void TestMessageId()
+        {
+            //Message with same Id will be published
+            //----------------------------------------------------------
+            long comm_id = 10;
+
+            //Create Message
+            String author = "group-16";
+            String message = "same";
+            UserMessage test_message = new UserMessage(author, message);
+
+            //Publish Message
+            worker_.Tell(new Publish(test_message, comm_id));
+            //Get Message
+            while (testclient_.ReceivedMessages.Count == 0)
+                system_.RunFor(1);
+            //OperationAckMessage tells if Message was published
+            Message operationAckMessage = testclient_.ReceivedMessages.Dequeue();
+            OperationAck operationAck = (OperationAck)operationAckMessage;
+
+            //Holt die Message vom entsprechenden Autor 
+            worker_.Tell(new RetrieveMessages(author, comm_id));
+            while (testclient_.ReceivedMessages.Count == 0)
+                system_.RunFor(1);
+
+            Message foundMessagesMessage = testclient_.ReceivedMessages.Dequeue();
+            FoundMessages foundMessages = (FoundMessages)foundMessagesMessage;
+
+
+            UserMessage same_message = foundMessages.Messages.FirstOrDefault();
+            //Publish Message
+            worker_.Tell(new Publish(same_message, comm_id));
+            //Get Message
+            while (testclient_.ReceivedMessages.Count == 0)
+                system_.RunFor(1);
+
+            //operationFailedMessage tells if Message was published
+            Message operationFailedMessage = testclient_.ReceivedMessages.Dequeue();
+            Assert.AreEqual(typeof(OperationFailed), operationFailedMessage.GetType());
+
+        }
+
+        [TestMethod]
+        public void TestMessageStore()
+        {
+            //same message will be published two times
+            //----------------------------------------------------------
+
+            long comm_id = 10;
+
+            //Create Message
+            String author = "group-16";
+            String message = "same mess";
+            UserMessage test_message = new UserMessage(author, message);
+
+            //Publish Message
+            worker_.Tell(new Publish(test_message, comm_id));
+            //Get Message
+            while (testclient_.ReceivedMessages.Count == 0)
+                system_.RunFor(1);
+            //OperationAckMessage tells if Message was published
+            Message operationAckMessage = testclient_.ReceivedMessages.Dequeue();
+            OperationAck operationAck = (OperationAck)operationAckMessage;
+            
+
+            //Publish Message
+            worker_.Tell(new Publish(test_message, comm_id));
+            //Get Message
+            while (testclient_.ReceivedMessages.Count == 0)
+                system_.RunFor(1);
+
+            //operationFailedMessage tells if Message was published
+            Message operationFailedMessage = testclient_.ReceivedMessages.Dequeue();
+            Assert.AreEqual(typeof(OperationFailed), operationFailedMessage.GetType());
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(UnknownClientException), "Unknown communication ID")]
+        public void TestUnknownClientException()
+        {
+            long wrong_comm_id = 12;
+            TestClient unknownclient = new TestClient();
+
+            String author = "Group16";
+            String message = "My message";
+            UserMessage test_message = new UserMessage(author, message);
+
+            worker_.Tell(new Publish(test_message, wrong_comm_id));
+            while (testclient_.ReceivedMessages.Count == 0)
+                system_.RunFor(1);
+
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(UnknownClientException), "Unknown communication ID")]
+        public void TestUnknownClientExceptionLike()
+        {
+            long wrong_comm_id = 12;
+            long random_message_id = 3;
+
+            Like test_like = new Like(testclient_.ToString(), wrong_comm_id, random_message_id);
+            worker_.Tell(test_like);
+            while (testclient_.ReceivedMessages.Count == 0)
+                system_.RunFor(1);
+
+        }
+        [TestMethod]
+        [ExpectedException(typeof(UnknownClientException), "Unknown communication ID")]
+        public void TestUnknownClientExceptionDislike()
+        {
+            long wrong_comm_id = 12;
+            long random_message_id = 3;
+
+            Dislike test_dislike = new Dislike(testclient_.ToString(), wrong_comm_id, random_message_id);
+            worker_.Tell(test_dislike);
+            while (testclient_.ReceivedMessages.Count == 0)
+                system_.RunFor(1);
+
+
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(UnknownClientException), "Unknown communication ID")]
+        public void TestUnknownClientExceptionRetrieve()
+        {
+            long wrong_comm_id = 12;
+            String author = "Group16";
+
+            worker_.Tell(new RetrieveMessages(author, wrong_comm_id));
+            while (testclient_.ReceivedMessages.Count == 0)
+                system_.RunFor(1);
+
+        }
+
     }
 }
