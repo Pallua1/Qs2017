@@ -11,11 +11,9 @@ namespace SimulatedActorUnitTests
     public class WorkerTests
     {
         static private TestClient testclient_;
-        // static private TestClient testclient2_;
         static private SimulatedActorSystem system_;
         static private Dispatcher dispatcher_;
         static private SimulatedActor worker_;
-        //  static private SimulatedActor worker2_;
 
         [ClassInitialize]
         static public void setup(TestContext context)
@@ -51,16 +49,6 @@ namespace SimulatedActorUnitTests
 
             worker_ = initAck.Worker;
 
-            //Testclient 2
-            //testclient2_ = new TestClient();
-            //system_.Spawn(testclient2_);
-            //dispatcher_.Tell(new InitCommunication(testclient2_, 10));
-            //while (testclient2_.ReceivedMessages.Count == 0)
-            //    system_.RunFor(1);
-            //Message initAckMessage2 = testclient2_.ReceivedMessages.Dequeue();
-            //InitAck initAck2 = (InitAck)initAckMessage;
-
-            //worker2_ = initAck2.Worker;
         }
 
         [TestCleanup]
@@ -73,13 +61,6 @@ namespace SimulatedActorUnitTests
 
             testclient_.ReceivedMessages.Dequeue();
 
-
-            ////Worker 2
-            //worker2_.Tell(new FinishCommunication(10));
-            //while (testclient2_.ReceivedMessages.Count == 0)
-            //    system_.RunFor(1);
-
-            //testclient2_.ReceivedMessages.Dequeue();
         }
 
 
@@ -129,7 +110,7 @@ namespace SimulatedActorUnitTests
         [TestMethod]
         public void TestPublishRetrieve()
         {
-            UserMessage message = new UserMessage("Felix", "Eyyyyy");
+            UserMessage message = new UserMessage("group-16", "First M");
 
             worker_.Tell(new Publish(message, 10));
 
@@ -143,7 +124,7 @@ namespace SimulatedActorUnitTests
 
             Assert.AreEqual(10, operationAck.CommunicationId);
 
-            worker_.Tell(new RetrieveMessages("Felix", 10));
+            worker_.Tell(new RetrieveMessages("group-16", 10));
 
             while (testclient_.ReceivedMessages.Count == 0)
                 system_.RunFor(1);
@@ -328,7 +309,7 @@ namespace SimulatedActorUnitTests
         [TestMethod]
         public void TestMessageStore()
         {
-            //same message will be published two times
+            //same message will be published two times (second time already has an Message ID)
             //----------------------------------------------------------
 
             long comm_id = 10;
@@ -345,8 +326,8 @@ namespace SimulatedActorUnitTests
                 system_.RunFor(1);
             //OperationAckMessage tells if Message was published
             Message operationAckMessage = testclient_.ReceivedMessages.Dequeue();
+            Assert.AreEqual(typeof(OperationAck), operationAckMessage.GetType());
             OperationAck operationAck = (OperationAck)operationAckMessage;
-            
 
             //Publish Message
             worker_.Tell(new Publish(test_message, comm_id));
@@ -357,6 +338,25 @@ namespace SimulatedActorUnitTests
             //operationFailedMessage tells if Message was published
             Message operationFailedMessage = testclient_.ReceivedMessages.Dequeue();
             Assert.AreEqual(typeof(OperationFailed), operationFailedMessage.GetType());
+
+            //same Message but with new MessageID
+            //--------------------------------------------------------------------------
+            UserMessage test_message2 = new UserMessage(author, message);
+
+            //Publish Message
+            worker_.Tell(new Publish(test_message2, comm_id));
+            //Get Message
+            while (testclient_.ReceivedMessages.Count == 0)
+                system_.RunFor(1);
+
+            //operationFailedMessage tells if Message was published
+            operationFailedMessage = testclient_.ReceivedMessages.Dequeue();
+            Assert.AreEqual(typeof(OperationFailed), operationFailedMessage.GetType());
+
+
+            //test toString Method
+            //--------------------------------------------------------------------------
+            Assert.AreEqual("group-16:same mess liked by : disliked by :", test_message.ToString());
         }
 
         [TestMethod]
@@ -389,6 +389,7 @@ namespace SimulatedActorUnitTests
                 system_.RunFor(1);
 
         }
+
         [TestMethod]
         [ExpectedException(typeof(UnknownClientException), "Unknown communication ID")]
         public void TestUnknownClientExceptionDislike()
@@ -400,8 +401,6 @@ namespace SimulatedActorUnitTests
             worker_.Tell(test_dislike);
             while (testclient_.ReceivedMessages.Count == 0)
                 system_.RunFor(1);
-
-
         }
 
         [TestMethod]
@@ -414,7 +413,175 @@ namespace SimulatedActorUnitTests
             worker_.Tell(new RetrieveMessages(author, wrong_comm_id));
             while (testclient_.ReceivedMessages.Count == 0)
                 system_.RunFor(1);
+        }
 
+        [TestMethod]
+        public void TestFinishCommunication()
+        {
+            //testing only the acks
+            SimulatedActorSystem system = new SimulatedActorSystem();
+            Dispatcher dispatcher = new Dispatcher(system, 2);
+            system.Spawn(dispatcher);
+            TestClient client = new TestClient();
+            system.Spawn(client);
+
+            dispatcher.Tell(new InitCommunication(client, 10));
+
+            while (client.ReceivedMessages.Count == 0)
+                system.RunFor(1);
+            Message initAckMessage = client.ReceivedMessages.Dequeue();
+            Assert.AreEqual(typeof(InitAck), initAckMessage.GetType());
+            InitAck initAck = (InitAck)initAckMessage;
+            Assert.AreEqual(10, initAck.CommunicationId);
+
+            SimulatedActor worker = initAck.Worker;
+
+            dispatcher.Tell(new Stop());
+
+            system.RunUntil(system.currentTime + 10);
+
+            worker.Tell(new FinishCommunication(10));
+            while (client.ReceivedMessages.Count == 0)
+                system.RunFor(1);
+
+            Message operationFailedMessage = client.ReceivedMessages.Dequeue();
+            Assert.AreEqual(typeof(OperationFailed), operationFailedMessage.GetType());
+           
+            // TODO run system until workers and dispatcher are stopped
+            int endtime = system.currentTime + 20;
+            system.RunUntil(endtime);
+            Assert.AreEqual(system.currentTime, endtime + 1);
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(UnknownClientException), "Unknown communication ID")]
+        public void TestUnknownClientExceptionFinishCommunication()
+        {
+            //testing only the acks
+            SimulatedActorSystem system = new SimulatedActorSystem();
+            Dispatcher dispatcher = new Dispatcher(system, 2);
+            system.Spawn(dispatcher);
+            TestClient client = new TestClient();
+            system.Spawn(client);
+
+            dispatcher.Tell(new InitCommunication(client, 10));
+
+            while (client.ReceivedMessages.Count == 0)
+                system.RunFor(1);
+            Message initAckMessage = client.ReceivedMessages.Dequeue();
+            Assert.AreEqual(typeof(InitAck), initAckMessage.GetType());
+            InitAck initAck = (InitAck)initAckMessage;
+            Assert.AreEqual(10, initAck.CommunicationId);
+
+            SimulatedActor worker = initAck.Worker;
+
+            worker.Tell(new FinishCommunication(11));
+            while (client.ReceivedMessages.Count == 0)
+                system.RunFor(1);
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(UnknownClientException), "Unknown communication ID")]
+        public void TestUnknownClientExceptionFinishCommunicationStopping()
+        {
+            //testing only the acks
+            SimulatedActorSystem system = new SimulatedActorSystem();
+            Dispatcher dispatcher = new Dispatcher(system, 2);
+            system.Spawn(dispatcher);
+            TestClient client = new TestClient();
+            system.Spawn(client);
+
+            dispatcher.Tell(new InitCommunication(client, 10));
+
+            while (client.ReceivedMessages.Count == 0)
+                system.RunFor(1);
+            Message initAckMessage = client.ReceivedMessages.Dequeue();
+            Assert.AreEqual(typeof(InitAck), initAckMessage.GetType());
+            InitAck initAck = (InitAck)initAckMessage;
+            Assert.AreEqual(10, initAck.CommunicationId);
+
+            SimulatedActor worker = initAck.Worker;
+
+            dispatcher.Tell(new Stop());
+
+            int endtime = system.currentTime + 10;
+
+            system.RunUntil(endtime);
+
+            Assert.AreEqual(endtime + 1, system.currentTime);
+
+            worker.Tell(new FinishCommunication(11));
+            while (client.ReceivedMessages.Count == 0)
+                system.RunFor(1);
+        }
+
+        /// <summary>
+        /// Simple first test initiating a communication and closing it afterwards.
+        /// </summary>
+        [TestMethod]
+        public void TestDispatcherStoppingFail()
+        {
+            //testing only the acks
+            SimulatedActorSystem system = new SimulatedActorSystem();
+            Dispatcher dispatcher = new Dispatcher(system, 2);
+            system.Spawn(dispatcher);
+            TestClient client = new TestClient();
+            system.Spawn(client);
+
+            dispatcher.Tell(new Stop());
+
+            dispatcher.Tell(new InitCommunication(client, 10));
+
+            while (client.ReceivedMessages.Count == 0)
+                system.RunFor(1);
+            Message initAckMessage = client.ReceivedMessages.Dequeue();
+            Assert.AreEqual(typeof(OperationFailed), initAckMessage.GetType());
+            OperationFailed initAck = (OperationFailed)initAckMessage;
+            Assert.AreEqual(10, initAck.CommunicationId);
+
+            // TODO run system until workers and dispatcher are stopped
+            int endtime = system.currentTime + 20;
+            system.RunUntil(endtime);
+            Assert.AreEqual(system.currentTime, endtime + 1);
+        }
+
+        [TestMethod]
+        public void TestMessageDrop()
+        {
+            SimulatedActor[] workers = new SimulatedActor[10];
+            TestClient[] clients = new TestClient[10];
+            for (int i = 0; i < 10; i++)
+            {
+                clients[i]  = new TestClient();
+                system_.Spawn(clients[i]);
+
+                dispatcher_.Tell(new InitCommunication(clients[i], i + 12));
+
+                while (clients[i].ReceivedMessages.Count == 0)
+                    system_.RunFor(1);
+                Message initAckMessage = clients[i].ReceivedMessages.Dequeue();
+                Assert.AreEqual(typeof(InitAck), initAckMessage.GetType());
+                InitAck initAck = (InitAck)initAckMessage;
+                Assert.AreEqual(i+12, initAck.CommunicationId);
+
+                workers[i] = initAck.Worker;
+            }
+
+            int j = 0;
+            foreach(SimulatedActor worker in workers)
+            {
+                worker.Tell(new Like("group-16", 12 + j, 1));
+                j++;
+            }
+
+            for(int i = 0; i < 10; i++)
+            {
+                while (clients[i].ReceivedMessages.Count == 0)
+                    system_.RunFor(1);
+                Message failedMessage = clients[i].ReceivedMessages.Dequeue();
+                if(failedMessage.GetType() != typeof(OperationAck))
+                    Assert.AreEqual(typeof(OperationFailed), failedMessage.GetType());
+            }
         }
 
     }
